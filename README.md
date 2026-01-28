@@ -28,34 +28,41 @@ git --version
 -----------------------------------------------------------------------------------------------------
 
 2) Clonar el repositorio
+```
 git clone https://github.com/guacho175/turnero.git
 cd turnero
-
+```
 -----------------------------------------------------------------------------------------------------
 
 3) Crear y activar entorno virtual
 Crear entorno
+```
 python -m venv env
+```
 Activar entorno (PowerShell)
-.\env\Scripts\Activate.ps1
 
+```
+.\env\Scripts\Activate.ps1
+```
 
 -----------------------------------------------------------------------------------------------------
 
 4) Instalar dependencias
 Con el entorno virtual activo:
-
+```
 pip install -r requirements.txt
-
+```
 -----------------------------------------------------------------------------------------------------
 
 5) Credenciales Google Calendar (obligatorio)
 El proyecto requiere archivos locales para autenticación OAuth.
 
 Estructura esperada
+```
 credentials/
  ├─ credentials.json   # OBLIGATORIO (OAuth Google)
  └─ token.json         # Se genera automáticamente (NO versionar)
+ ```
 Si el repositorio no incluye credenciales
 Crear la carpeta:
 
@@ -74,8 +81,9 @@ Crear un credentials.json vacío NO autentica, solo evita errores de archivo ine
 
 6) Ejecutar el servidor
 Desde la carpeta donde se encuentra manage.py:
-
+```
 python manage.py runserver
+```
 Servidor disponible en:
 
 http://127.0.0.1:8000/
@@ -83,6 +91,7 @@ http://127.0.0.1:8000/
 -----------------------------------------------------------------------------------------------------
 
 7) Prueba rápida del endpoint (POST)
+```
 $body = @{
   summary = "Cita de prueba"
   start   = "2026-01-27T15:00:00-03:00"
@@ -95,6 +104,7 @@ Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:8000/calendar/events" `
   -ContentType "application/json" `
   -Body $body
+```
 
 -----------------------------------------------------------------------------------------------------
 ## Ejecución exitosa
