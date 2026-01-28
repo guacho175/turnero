@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Agenda</title>
+
+  <!-- FullCalendar (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+</head>
+<body>
+  <h2 style="font-family: system-ui;">Agenda (Google Calendar)</h2>
+  <div id="calendar" style="max-width: 1100px; margin: 0 auto;"></div>
+
+  <script>
+    async function fetchEvents(info) {
+      // FullCalendar entrega rango visible:
+      // info.startStr / info.endStr -> ISO strings
+      const url = new URL(window.location.origin + "/calendar/events");
+      url.searchParams.set("time_min", info.startStr);
+      url.searchParams.set("time_max", info.endStr);
+      url.searchParams.set("max_results", "250");
+
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("No se pudo cargar eventos");
+      const data = await res.json();
+
+      // Adaptación a formato FullCalendar:
+      return data.events.map(ev => {
+        const start = (ev.start && (ev.start.dateTime || ev.start.date)) || null;
+        const end = (ev.end && (ev.end.dateTime || ev.end.date)) || null;
+
+        return {
+          id: ev.id,
+          title: ev.summary || "(Sin título)",
+          start,
+          end,
+          url: ev.htmlLink || null
+        };
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const el = document.getElementById("calendar");
+
+      const calendar = new FullCalendar.Calendar(el, {
+        initialView: "dayGridMonth",
+        height: "auto",
+        nowIndicator: true,
+        headerToolbar: {
+          left: "prev,next today",
+          center: "title",
+          right: "dayGridMonth,timeGridWeek,timeGridDay"
+        },
+        events: async (info, successCallback, failureCallback) => {
+          try {
+            const events = await fetchEvents(info);
+            successCallback(events);
+          } catch (e) {
+            console.error(e);
+            failureCallback(e);
+          }
+        }
+      });
+
+      calendar.render();
+    });
+  </script>
+</body>
+</html>

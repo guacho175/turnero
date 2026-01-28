@@ -1,0 +1,26 @@
+# Entorno virtual
+env/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Django / logs
+*.log
+
+# Archivos locales
+.env
+.env.*
+
+# Credenciales Google (NO subir)
+credentials/token.json
+credentials/*.json
+
+
+
+# VS Code / IDE
+.vscode/
+.idea/
