@@ -95,7 +95,7 @@ Invoke-RestMethod -Method Post `
   -Body $body
 
 -----------------------------------------------------------------------------------------------------
-![image.png](docs/img/success.png)
+![Prueba exitosa](docs/img/success.png)
 
 ## Ejecución exitosa
 
