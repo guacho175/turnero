@@ -1,63 +1,86 @@
-# Manual de instalación (Django + DRF + Google Calendar)
+# Manual de instalación  
+**Proyecto:** Turnero  
+**Stack:** Django + Django REST Framework + Google Calendar API  
+
+Repositorio:  
+https://github.com/guacho175/turnero.git
+
+-----------------------------------------------------------------------------------------------------
 
 ## 1) Requisitos previos
-Instala / verifica en tu PC:
 
-- **Python 3.x**
-- **pip** (viene con Python normalmente)
-- **Git** (para clonar)
-- Permiso para crear entornos virtuales (**venv**)
+Antes de comenzar, verifica que tu sistema tenga instalado:
 
-Verificación rápida:
+- **Python**
+- **pip**
+- **Git**
+- Soporte para entornos virtuales (`venv`)
+-----------------------------------------------------------------------------------------------------
+
+### Verificación
 ```powershell
 python --version
 pip --version
 git --version
+
+-----------------------------------------------------------------------------------------------------
+
 2) Clonar el repositorio
-git clone <URL_DEL_REPO>
-cd <CARPETA_DEL_REPO>
+git clone https://github.com/guacho175/turnero.git
+cd turnero
+
+-----------------------------------------------------------------------------------------------------
+
 3) Crear y activar entorno virtual
-Crear:
-
+Crear entorno
 python -m venv env
-Activar (PowerShell):
-
+Activar entorno (PowerShell)
 .\env\Scripts\Activate.ps1
-Si PowerShell bloquea scripts:
 
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+-----------------------------------------------------------------------------------------------------
+
 4) Instalar dependencias
+Con el entorno virtual activo:
+
 pip install -r requirements.txt
+
+-----------------------------------------------------------------------------------------------------
+
 5) Credenciales Google Calendar (obligatorio)
-Este proyecto requiere archivos locales en credentials/.
+El proyecto requiere archivos locales para autenticación OAuth.
 
-Estructura esperada:
-
-credentials/credentials.json (OBLIGATORIO: se obtiene desde Google Cloud Console)
-
-credentials/token.json (SE GENERA SOLO al autorizar; NO se sube al repo)
-
-Si el repo viene sin credenciales
-Crea la carpeta:
+Estructura esperada
+credentials/
+ ├─ credentials.json   # OBLIGATORIO (OAuth Google)
+ └─ token.json         # Se genera automáticamente (NO versionar)
+Si el repositorio no incluye credenciales
+Crear la carpeta:
 
 mkdir credentials
-Luego:
+Luego una de las siguientes opciones:
 
-Solicita credentials.json al responsable del proyecto, o
+Solicitar credentials.json al responsable del proyecto, o
 
-Crea tus propias credenciales OAuth en Google Cloud Console y descarga el JSON como credentials/credentials.json.
+Crear credenciales OAuth en Google Cloud Console y descargar el archivo como:
 
-Nota: crear un credentials.json vacío NO sirve para autenticar; solo evita errores de “archivo no encontrado”.
+credentials/credentials.json
+Nota técnica:
+Crear un credentials.json vacío NO autentica, solo evita errores de archivo inexistente.
+
+-----------------------------------------------------------------------------------------------------
 
 6) Ejecutar el servidor
-Desde la carpeta donde está manage.py:
+Desde la carpeta donde se encuentra manage.py:
 
 python manage.py runserver
-Servidor:
+Servidor disponible en:
 
 http://127.0.0.1:8000/
 
-7) Prueba rápida (endpoint)
+-----------------------------------------------------------------------------------------------------
+
+7) Prueba rápida del endpoint (POST)
 $body = @{
   summary = "Cita de prueba"
   start   = "2026-01-27T15:00:00-03:00"
@@ -70,3 +93,14 @@ Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:8000/calendar/events" `
   -ContentType "application/json" `
   -Body $body
+
+-----------------------------------------------------------------------------------------------------
+![alt text](image.png)
+
+## Ejecución exitosa
+
+La siguiente captura muestra la ejecución correcta del endpoint `POST /calendar/events`
+desde PowerShell, retornando un evento **confirmado** y el `htmlLink` generado por
+Google Calendar.
+
+El evento fue creado correctamente en el calendario asociado a las credenciales OAuth.
