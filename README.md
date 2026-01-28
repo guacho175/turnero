@@ -95,12 +95,13 @@ Invoke-RestMethod -Method Post `
   -Body $body
 
 -----------------------------------------------------------------------------------------------------
-![Prueba exitosa](docs/img/success.png)
-
 ## Ejecución exitosa
 
-La siguiente captura muestra la ejecución correcta del endpoint `POST /calendar/events`
-desde PowerShell, retornando un evento **confirmado** y el `htmlLink` generado por
-Google Calendar.
+![Prueba exitosa - creación de evento](docs/img/success.png)
+
+La siguiente captura muestra la ejecución correcta del endpoint
+`POST /calendar/events` desde PowerShell, retornando un evento **confirmado**
+y el `htmlLink` generado por Google Calendar.
+
 
 El evento fue creado correctamente en el calendario asociado a las credenciales OAuth.
