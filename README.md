@@ -22,6 +22,8 @@ Antes de comenzar, verifica que tu sistema tenga instalado:
 python --version
 pip --version
 git --version
+```
+
 
 -----------------------------------------------------------------------------------------------------
 
