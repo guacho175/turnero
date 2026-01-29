@@ -1,41 +1,126 @@
-from __future__ import annotations          # Permite usar anotaciones de tipos como strings (typing moderno)
-import logging                              # Sistema de logging estándar de Python (logs estructurados)
-from django.conf import settings            # Acceso a settings.py (mapa de agendas, calendar IDs, timezone)
-from rest_framework import status           # Códigos HTTP (200, 201, 400, 502, etc.)
-from rest_framework.response import Response # Respuesta HTTP JSON de Django REST Framework
-from rest_framework.views import APIView    # Base class para crear endpoints REST (GET/POST)
+from __future__ import annotations
 
-from calendar_app.api.serializers import (  # Serializers DRF: validan input y normalizan output
-    EventCreateSerializer,                  # Valida payload de creación de eventos (incluye agenda)
-    EventListQuerySerializer,               # Valida query params del listado de eventos
-    EventOutSerializer,                     # Normaliza la respuesta del evento creado/listado
-)
-
-from calendar_app.servicios.google_calendar import (  # Servicio de integración con Google Calendar API
-    GoogleCalendarService,                  # Cliente que opera sobre un calendarId específico
-    GoogleEventCreate,                      # DTO del evento (summary, start, end, etc.)
-)
+import logging
 from datetime import timedelta
-from calendar_app.api.serializers import SlotCreateSerializer,SlotListQuerySerializer,SlotReserveSerializer
+from typing import Any, Dict, Optional, Tuple
+
+from django.conf import settings
+from django.shortcuts import render
+
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from calendar_app.api.serializers import (
+    EventCreateSerializer,
+    EventListQuerySerializer,
+    EventOutSerializer,
+    SlotCreateSerializer,
+    SlotListQuerySerializer,
+    SlotReserveSerializer,
+)
+
+from calendar_app.servicios.google_calendar import (
+    GoogleCalendarService,
+    GoogleEventCreate,
+)
 
 logger = logging.getLogger(__name__)
 
 
+# -----------------------------
+# Helpers (evitan redundancia)
+# -----------------------------
+def _calendar_map() -> Dict[str, str]:
+    return getattr(settings, "GOOGLE_CALENDAR_MAP", {}) or {}
+
+
+def _default_agenda() -> Optional[str]:
+    # Si tienes DEFAULT_AGENDA en settings, úsalo; si no, toma la primera agenda del mapa.
+    default = getattr(settings, "DEFAULT_AGENDA", None)
+    if default:
+        return default
+    m = _calendar_map()
+    return next(iter(m.keys()), None)
+
+
+def _resolve_calendar_id(agenda: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Retorna (agenda_normalizada, calendar_id) o (None, None) si no se puede.
+    """
+    if not agenda:
+        agenda = _default_agenda()
+
+    if not agenda:
+        return None, None
+
+    m = _calendar_map()
+    return agenda, m.get(agenda)
+
+
+def _pick_query_params(request, allowed_keys):
+    """
+    Evita que serializers de query params fallen por keys extra (ej: agenda).
+    """
+    out = {}
+    for k in allowed_keys:
+        v = request.query_params.get(k)
+        if v is not None and v != "":
+            out[k] = v
+    return out
+
+
+# ------------------------------------
+# Web layer (render del template HTML)
+# ------------------------------------
+
+
+# -----------------------------
+# API: Events
+# -----------------------------
 class EventsView(APIView):
     """
-    GET  /calendar/events?time_min=...&time_max=...&max_results=50
+    GET  /calendar/events?agenda=agenda1&time_min=...&time_max=...&max_results=50
     POST /calendar/events
     """
 
     def get(self, request):
-        query_ser = EventListQuerySerializer(data=request.query_params)
+        # Validar solo los parámetros que el serializer espera (evita que "agenda" moleste)
+        query_data = _pick_query_params(request, ["time_min", "time_max", "max_results"])
+        query_ser = EventListQuerySerializer(data=query_data)
         query_ser.is_valid(raise_exception=True)
 
         time_min = query_ser.validated_data.get("time_min")
         time_max = query_ser.validated_data.get("time_max")
         max_results = query_ser.validated_data.get("max_results", 50)
 
-        svc = GoogleCalendarService()
+        # Agenda por querystring (selector en HTML)
+        agenda_param = request.query_params.get("agenda")
+        agenda, calendar_id = _resolve_calendar_id(agenda_param)
+
+        # LOG (mantengo estilo simple)
+        print("=======================================", flush=True)
+        print("[API][GET] agenda(query):", agenda_param, flush=True)
+        print("[API][GET] agenda(resuelta):", agenda, flush=True)
+        print("[API][GET] calendar_id:", calendar_id, flush=True)
+        print("[API][GET] time_min:", time_min, flush=True)
+        print("[API][GET] time_max:", time_max, flush=True)
+        print("[API][GET] max_results:", max_results, flush=True)
+        print("=======================================", flush=True)
+
+        if not agenda:
+            return Response(
+                {"detail": "No hay agenda definida. Revisa GOOGLE_CALENDAR_MAP / DEFAULT_AGENDA."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not calendar_id:
+            return Response(
+                {"detail": f"Agenda inválida: {agenda}", "valid": list(_calendar_map().keys())},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        svc = GoogleCalendarService(calendar_id=calendar_id)
 
         try:
             items = svc.list_events(time_min=time_min, time_max=time_max, max_results=max_results)
@@ -44,44 +129,41 @@ class EventsView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
         out = EventOutSerializer(items, many=True).data
-        return Response({"count": len(out), "events": out}, status=status.HTTP_200_OK)
+        return Response(
+            {"agenda": agenda, "count": len(out), "events": out},
+            status=status.HTTP_200_OK,
+        )
 
     def post(self, request):
         # 1) LOG: lo que DRF recibió realmente (antes de validar)
         print("=======================================", flush=True)
-        print("[API] request.data:", dict(request.data), flush=True)
+        print("[API][POST] request.data:", dict(request.data), flush=True)
 
         in_ser = EventCreateSerializer(data=request.data)
         in_ser.is_valid(raise_exception=True)
         data = in_ser.validated_data
 
         # 2) LOG: lo que quedó después del serializer
-        print("[API] validated_data:", data, flush=True)
+        print("[API][POST] validated_data:", data, flush=True)
 
-        # 3) Agenda: primero desde validated_data (lo correcto)
-        agenda = data.get("agenda")
+        # 3) Agenda: preferir validated_data; fallback body
+        agenda = data.get("agenda") or request.data.get("agenda")
+        agenda, calendar_id = _resolve_calendar_id(agenda)
 
-        # 4) Diagnóstico: si el serializer no la incluye, intenta leer directo del body
-        if agenda is None:
-            agenda = request.data.get("agenda")
-
-        calendar_map = getattr(settings, "GOOGLE_CALENDAR_MAP", {})
-        calendar_id = calendar_map.get(agenda)
-
-        print("[API] agenda:", agenda, flush=True)
-        print("[API] calendar_id:", calendar_id, flush=True)
+        print("[API][POST] agenda:", agenda, flush=True)
+        print("[API][POST] calendar_id:", calendar_id, flush=True)
         print("=======================================", flush=True)
 
         if not agenda:
             return Response(
-                {"detail": "Falta campo 'agenda' en el body o el serializer lo está descartando."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Falta campo 'agenda' en el body o no hay DEFAULT_AGENDA configurada."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not calendar_id:
             return Response(
-                {"detail": f"Agenda inválida: {agenda}"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": f"Agenda inválida: {agenda}", "valid": list(_calendar_map().keys())},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         dto = GoogleEventCreate(
@@ -100,16 +182,22 @@ class EventsView(APIView):
             logger.exception("Error creando evento")
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        return Response(EventOutSerializer(created).data, status=status.HTTP_201_CREATED)
+        payload = EventOutSerializer(created).data
+        payload["agenda"] = agenda
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
+# -----------------------------
+# API: FreeBusy
+# -----------------------------
 class FreeBusyView(APIView):
     """
-    GET /calendar/freebusy?time_min=...&time_max=...
+    GET /calendar/freebusy?agenda=agenda1&time_min=...&time_max=...
     """
 
     def get(self, request):
-        query_ser = EventListQuerySerializer(data=request.query_params)
+        query_data = _pick_query_params(request, ["time_min", "time_max"])
+        query_ser = EventListQuerySerializer(data=query_data)
         query_ser.is_valid(raise_exception=True)
 
         time_min = query_ser.validated_data.get("time_min")
@@ -118,10 +206,25 @@ class FreeBusyView(APIView):
         if not time_min or not time_max:
             return Response(
                 {"detail": "Debes enviar 'time_min' y 'time_max'."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        svc = GoogleCalendarService()
+        agenda_param = request.query_params.get("agenda")
+        agenda, calendar_id = _resolve_calendar_id(agenda_param)
+
+        print("=======================================", flush=True)
+        print("[API][FREEBUSY] agenda(query):", agenda_param, flush=True)
+        print("[API][FREEBUSY] agenda(resuelta):", agenda, flush=True)
+        print("[API][FREEBUSY] calendar_id:", calendar_id, flush=True)
+        print("=======================================", flush=True)
+
+        if not agenda or not calendar_id:
+            return Response(
+                {"detail": f"Agenda inválida: {agenda}", "valid": list(_calendar_map().keys())},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        svc = GoogleCalendarService(calendar_id=calendar_id)
 
         try:
             res = svc.freebusy(time_min=time_min, time_max=time_max)
@@ -129,16 +232,17 @@ class FreeBusyView(APIView):
             logger.exception("Error consultando freebusy")
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        return Response(res, status=status.HTTP_200_OK)
+        return Response({"agenda": agenda, "freebusy": res}, status=status.HTTP_200_OK)
 
-# SlotCreateView
-# Generación masiva de slots de disponibilidad (no reservas)
+
+# -----------------------------
+# API: Slots
+# -----------------------------
 class SlotCreateView(APIView):
     """
     POST /calendar/agendas/<agenda>/slots
 
     Crea eventos tipo "slot" (DISPONIBLE) en el calendario asociado a la agenda.
-    Reusa settings.GOOGLE_CALENDAR_MAP igual que EventsView.post().
     """
 
     def post(self, request, agenda: str):
@@ -146,22 +250,24 @@ class SlotCreateView(APIView):
         in_ser.is_valid(raise_exception=True)
         data = in_ser.validated_data
 
-        # 1) Resolver calendar_id desde el mapa existente
-        calendar_map = getattr(settings, "GOOGLE_CALENDAR_MAP", {})
-        calendar_id = calendar_map.get(agenda)
-
+        agenda, calendar_id = _resolve_calendar_id(agenda)
         if not calendar_id:
             return Response(
-                {"detail": f"Agenda inválida: {agenda}"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": f"Agenda inválida: {agenda}", "valid": list(_calendar_map().keys())},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 2) Armar summary base del slot
+        # LOG
+        print("=======================================", flush=True)
+        print("[API][SLOT CREATE] agenda:", agenda, flush=True)
+        print("[API][SLOT CREATE] calendar_id:", calendar_id, flush=True)
+        print("[API][SLOT CREATE] validated_data:", data, flush=True)
+        print("=======================================", flush=True)
+
         service_name = (data.get("service") or "").strip()
         prefix = (data.get("summary_prefix") or "DISPONIBLE").strip()
         summary = f"{prefix} - {service_name}" if service_name else prefix
 
-        # 3) Cliente Google Calendar apuntando a la agenda correcta
         svc = GoogleCalendarService(calendar_id=calendar_id)
 
         created = []
@@ -181,14 +287,16 @@ class SlotCreateView(APIView):
                 logger.exception("Error creando slot único")
                 return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
-            created.append({
-                "event_id": ev.get("id"),
-                "summary": ev.get("summary"),
-                "start": ev.get("start"),
-                "end": ev.get("end"),
-            })
+            created.append(
+                {
+                    "event_id": ev.get("id"),
+                    "summary": ev.get("summary"),
+                    "start": ev.get("start"),
+                    "end": ev.get("end"),
+                }
+            )
 
-            return Response({"created_count": 1, "created": created}, status=status.HTTP_201_CREATED)
+            return Response({"agenda": agenda, "created_count": 1, "created": created}, status=status.HTTP_201_CREATED)
 
         # Caso B: slots por rango (range_start/range_end)
         range_start = data["range_start"]
@@ -212,12 +320,15 @@ class SlotCreateView(APIView):
                     attendees=[],
                 )
                 ev = svc.create_event(dto)
-                created.append({
-                    "event_id": ev.get("id"),
-                    "summary": ev.get("summary"),
-                    "start": ev.get("start"),
-                    "end": ev.get("end"),
-                })
+
+                created.append(
+                    {
+                        "event_id": ev.get("id"),
+                        "summary": ev.get("summary"),
+                        "start": ev.get("start"),
+                        "end": ev.get("end"),
+                    }
+                )
 
                 cursor = cursor + step_delta
 
@@ -226,18 +337,17 @@ class SlotCreateView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(
-            {"created_count": len(created), "created": created},
-            status=status.HTTP_201_CREATED
+            {"agenda": agenda, "created_count": len(created), "created": created},
+            status=status.HTTP_201_CREATED,
         )
-
 
 
 class SlotListView(APIView):
     """
     GET /calendar/agendas/<agenda>/slots?time_min=...&time_max=...&max_results=250
 
-    Lista bloques DISPONIBLES (slots) en una agenda.
-    Filtro actual (MVP): description contiene 'type=slot' y 'state=available'
+    Lista slots DISPONIBLES en una agenda.
+    Filtro actual: description contiene 'type=slot' y 'state=available'
     """
 
     def get(self, request, agenda: str):
@@ -249,11 +359,21 @@ class SlotListView(APIView):
         time_max = q.get("time_max")
         max_results = q.get("max_results", 250)
 
-        calendar_map = getattr(settings, "GOOGLE_CALENDAR_MAP", {})
-        calendar_id = calendar_map.get(agenda)
-
+        agenda, calendar_id = _resolve_calendar_id(agenda)
         if not calendar_id:
-            return Response({"detail": f"Agenda inválida: {agenda}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": f"Agenda inválida: {agenda}", "valid": list(_calendar_map().keys())},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # LOG
+        print("=======================================", flush=True)
+        print("[API][SLOT LIST] agenda:", agenda, flush=True)
+        print("[API][SLOT LIST] calendar_id:", calendar_id, flush=True)
+        print("[API][SLOT LIST] time_min:", time_min, flush=True)
+        print("[API][SLOT LIST] time_max:", time_max, flush=True)
+        print("[API][SLOT LIST] max_results:", max_results, flush=True)
+        print("=======================================", flush=True)
 
         svc = GoogleCalendarService(calendar_id=calendar_id)
 
@@ -263,30 +383,26 @@ class SlotListView(APIView):
             logger.exception("Error listando slots")
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        # --- Filtro: SOLO slots disponibles ---
         out = []
         for ev in items:
             desc = (ev.get("description") or "")
             summary = (ev.get("summary") or "")
 
-            is_slot = ("type=slot" in desc)
-            is_available = ("state=available" in desc)
-
-            # fallback por si algún slot quedó sin description (opcional)
-            if not is_slot:
+            if "type=slot" not in desc:
                 continue
-            if not is_available:
+            if "state=available" not in desc:
                 continue
 
-            out.append({
-                "event_id": ev.get("id"),
-                "summary": summary,
-                "start": ev.get("start"),
-                "end": ev.get("end"),
-            })
+            out.append(
+                {
+                    "event_id": ev.get("id"),
+                    "summary": summary,
+                    "start": ev.get("start"),
+                    "end": ev.get("end"),
+                }
+            )
 
-        return Response({"count": len(out), "slots": out}, status=status.HTTP_200_OK)
-
+        return Response({"agenda": agenda, "count": len(out), "slots": out}, status=status.HTTP_200_OK)
 
 
 class SlotReserveView(APIView):
@@ -294,7 +410,7 @@ class SlotReserveView(APIView):
     POST /calendar/agendas/<agenda>/slots/<event_id>/reserve
 
     Marca un slot como reservado:
-    - valida que description contenga type=slot y state=available
+    - valida description: type=slot y state=available
     - cambia state=reserved
     - cambia summary a "RESERVADO - <cliente>"
     """
@@ -304,15 +420,23 @@ class SlotReserveView(APIView):
         in_ser.is_valid(raise_exception=True)
         data = in_ser.validated_data
 
-        # 1) resolver calendar_id (reutiliza tu patrón actual)
-        calendar_map = getattr(settings, "GOOGLE_CALENDAR_MAP", {})
-        calendar_id = calendar_map.get(agenda)
+        agenda, calendar_id = _resolve_calendar_id(agenda)
         if not calendar_id:
-            return Response({"detail": f"Agenda inválida: {agenda}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": f"Agenda inválida: {agenda}", "valid": list(_calendar_map().keys())},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         svc = GoogleCalendarService(calendar_id=calendar_id)
 
-        # 2) leer evento actual
+        # LOG
+        print("=======================================", flush=True)
+        print("[API][SLOT RESERVE] agenda:", agenda, flush=True)
+        print("[API][SLOT RESERVE] calendar_id:", calendar_id, flush=True)
+        print("[API][SLOT RESERVE] event_id:", event_id, flush=True)
+        print("[API][SLOT RESERVE] validated_data:", data, flush=True)
+        print("=======================================", flush=True)
+
         try:
             ev = svc.get_event(event_id)
         except Exception as e:
@@ -320,19 +444,18 @@ class SlotReserveView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
         desc = ev.get("description") or ""
-        summary = ev.get("summary") or ""
 
-        # 3) validar que sea slot disponible
         if "type=slot" not in desc:
             return Response({"detail": "El evento no es un slot (type=slot)."}, status=status.HTTP_400_BAD_REQUEST)
 
         if "state=available" not in desc:
-            return Response({"detail": "Slot no disponible (ya reservado o sin estado available)."}, status=status.HTTP_409_CONFLICT)
+            return Response(
+                {"detail": "Slot no disponible (ya reservado o sin estado available)."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
-        # 4) construir nuevo description cambiando el estado
         new_desc = desc.replace("state=available", "state=reserved")
 
-        # info extra (opcional) para trazabilidad
         customer_name = data["customer_name"].strip()
         customer_phone = (data.get("customer_phone") or "").strip()
         notes = (data.get("notes") or "").strip()
@@ -346,7 +469,6 @@ class SlotReserveView(APIView):
         if extra_lines:
             new_desc = new_desc + "\n" + "\n".join(extra_lines)
 
-        # 5) patch del evento
         patch_body = {
             "summary": f"RESERVADO - {customer_name}",
             "description": new_desc,
@@ -358,10 +480,14 @@ class SlotReserveView(APIView):
             logger.exception("Error reservando slot (patch)")
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        return Response({
-            "event_id": updated.get("id"),
-            "summary": updated.get("summary"),
-            "start": updated.get("start"),
-            "end": updated.get("end"),
-            "status": "reserved"
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "agenda": agenda,
+                "event_id": updated.get("id"),
+                "summary": updated.get("summary"),
+                "start": updated.get("start"),
+                "end": updated.get("end"),
+                "status": "reserved",
+            },
+            status=status.HTTP_200_OK,
+        )
