@@ -106,8 +106,11 @@ class GoogleCalendarService:
         try:
             return svc.events().insert(
                 calendarId=self.calendar_id,
-                body=body
+                body=body,
+                sendUpdates="all"  # ✅ envía invitación/updates por correo a los attendees
             ).execute()
+
+    
         except HttpError as e:
             raise RuntimeError(
                 f"Google Calendar create_event falló ({self.calendar_id}): {e}"
@@ -149,10 +152,12 @@ class GoogleCalendarService:
             return svc.events().patch(
                 calendarId=self.calendar_id,
                 eventId=event_id,
-                body=body
+                body=body,
+                sendUpdates="all"  # ✅ NUEVO: manda invitación/updates por correo
             ).execute()
         except HttpError as e:
             raise RuntimeError(
                 f"Google Calendar patch_event falló ({self.calendar_id}, {event_id}): {e}"
             ) from e
+
 

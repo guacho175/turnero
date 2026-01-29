@@ -115,3 +115,4 @@ class SlotReserveSerializer(serializers.Serializer):
     customer_name = serializers.CharField(max_length=120)
     customer_phone = serializers.CharField(max_length=40, required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    attendee_email = serializers.EmailField(required=False, allow_blank=True)

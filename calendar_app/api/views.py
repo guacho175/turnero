@@ -459,6 +459,8 @@ class SlotReserveView(APIView):
         customer_name = data["customer_name"].strip()
         customer_phone = (data.get("customer_phone") or "").strip()
         notes = (data.get("notes") or "").strip()
+        attendee_email = (data.get("attendee_email") or "").strip()
+
 
         extra_lines = []
         if customer_phone:
@@ -466,13 +468,51 @@ class SlotReserveView(APIView):
         if notes:
             extra_lines.append(f"notes={notes}")
 
+        if attendee_email:
+            extra_lines.append(f"attendee_email={attendee_email}")
+
         if extra_lines:
             new_desc = new_desc + "\n" + "\n".join(extra_lines)
 
+        # 1) Estado técnico del slot (NO se muestra al cliente)
+        #    Mantengo la marca de slot y cambio a reserved, pero ya NO agrego datos personales aquí.
+        new_desc = desc.replace("state=available", "state=reserved")
+
+        customer_name = data["customer_name"].strip()
+        customer_phone = (data.get("customer_phone") or "").strip()
+        notes = (data.get("notes") or "").strip()
+        attendee_email = (data.get("attendee_email") or "").strip()
+
+        # 2) Descripción pública (esto es lo que verá el invitado en el correo)
+        public_desc_lines = [
+            "Reserva confirmada ✅",
+            f"Nombre: {customer_name}",
+        ]
+        if notes:
+            public_desc_lines.append(f"Notas: {notes}")
+        public_desc = "\n".join(public_desc_lines)
+
         patch_body = {
             "summary": f"RESERVADO - {customer_name}",
-            "description": new_desc,
+            "description": public_desc,  # ✅ limpio para el correo/invitación
+            "extendedProperties": {
+                "private": {              # ✅ metadata técnica (no se muestra como texto)
+                    "type": "slot",
+                    "state": "reserved",
+                    "customer_phone": customer_phone,
+                    "notes": notes,
+                    "agenda": agenda,
+                }
+            },
         }
+
+        # 3) Invitados reales (para que llegue correo)
+        if attendee_email:
+            existing = ev.get("attendees") or []
+            emails = {a.get("email") for a in existing if a.get("email")}
+            if attendee_email not in emails:
+                existing.append({"email": attendee_email})
+            patch_body["attendees"] = existing
 
         try:
             updated = svc.patch_event(event_id, patch_body)
