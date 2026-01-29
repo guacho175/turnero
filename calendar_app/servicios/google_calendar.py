@@ -128,3 +128,31 @@ class GoogleCalendarService:
             raise RuntimeError(
                 f"Google Calendar freebusy falló ({self.calendar_id}): {e}"
             ) from e
+
+
+    def get_event(self, event_id: str) -> Dict[str, Any]:
+        svc = self._client()
+        try:
+            return svc.events().get(
+                calendarId=self.calendar_id,
+                eventId=event_id
+            ).execute()
+        except HttpError as e:
+            raise RuntimeError(
+                f"Google Calendar get_event falló ({self.calendar_id}, {event_id}): {e}"
+            ) from e
+
+
+    def patch_event(self, event_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        svc = self._client()
+        try:
+            return svc.events().patch(
+                calendarId=self.calendar_id,
+                eventId=event_id,
+                body=body
+            ).execute()
+        except HttpError as e:
+            raise RuntimeError(
+                f"Google Calendar patch_event falló ({self.calendar_id}, {event_id}): {e}"
+            ) from e
+

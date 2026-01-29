@@ -20,6 +20,8 @@ GOOGLE_TOKEN_FILE = BASE_DIR / "credentials" / "token.json"
 GOOGLE_CALENDAR_MAP = {
     "agenda1": "primary",  # Agenda1 (calendario principal renombrado)
     "agenda2": "ac03df2896cac82f2980b9da0b446bed75500653dec30d2d9be4ba0e50241fb7@group.calendar.google.com",
+    "agenda3": "9cd67cffabed2412f226b5dc9c1448c28ce9a9c5b0ca17997022f9c845724d64@group.calendar.google.com",
+
 }
 CALENDAR_TIMEZONE = "America/Santiago"
 
