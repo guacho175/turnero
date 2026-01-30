@@ -1,9 +1,7 @@
 from __future__ import annotations
-
 import logging
 from datetime import timedelta
-from typing import Any, Dict, Optional, Tuple
-
+from typing import  Dict, Optional, Tuple
 from django.conf import settings
 from django.shortcuts import render
 
@@ -26,7 +24,6 @@ from calendar_app.servicios.google_calendar import (
 )
 
 logger = logging.getLogger(__name__)
-
 
 # -----------------------------
 # Helpers (evitan redundancia)
@@ -232,9 +229,7 @@ class FreeBusyView(APIView):
         return Response({"agenda": agenda, "freebusy": res}, status=status.HTTP_200_OK)
 
 
-# -----------------------------
-# API: Slots Consulta bloques ocupados (busy)
-# -----------------------------
+# ----------------------------------------------------------
 class SlotCreateView(APIView):
     """
     POST /calendar/agendas/<agenda>/slots
