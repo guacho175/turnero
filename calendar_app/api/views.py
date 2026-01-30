@@ -70,9 +70,6 @@ def _pick_query_params(request, allowed_keys):
     return out
 
 
-# ------------------------------------
-# Web layer (render del template HTML)
-# ------------------------------------
 
 
 # -----------------------------
@@ -98,7 +95,7 @@ class EventsView(APIView):
         agenda_param = request.query_params.get("agenda")
         agenda, calendar_id = _resolve_calendar_id(agenda_param)
 
-        # LOG (mantengo estilo simple)
+        # LOG 
         print("=======================================", flush=True)
         print("[API][GET] agenda(query):", agenda_param, flush=True)
         print("[API][GET] agenda(resuelta):", agenda, flush=True)
@@ -236,7 +233,7 @@ class FreeBusyView(APIView):
 
 
 # -----------------------------
-# API: Slots
+# API: Slots Consulta bloques ocupados (busy)
 # -----------------------------
 class SlotCreateView(APIView):
     """
@@ -341,7 +338,9 @@ class SlotCreateView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-
+# -----------------------------
+# API Slots Lista disponibles
+# -----------------------------
 class SlotListView(APIView):
     """
     GET /calendar/agendas/<agenda>/slots?time_min=...&time_max=...&max_results=250
@@ -405,6 +404,9 @@ class SlotListView(APIView):
         return Response({"agenda": agenda, "count": len(out), "slots": out}, status=status.HTTP_200_OK)
 
 
+# -----------------------------
+# API Slots Cambia estado a reservado
+# -----------------------------
 class SlotReserveView(APIView):
     """
     POST /calendar/agendas/<agenda>/slots/<event_id>/reserve

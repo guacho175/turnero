@@ -93,17 +93,15 @@ http://127.0.0.1:8000/
 7) Prueba rápida del endpoint (POST)
 ```
 $body = @{
-  summary = "Cita de prueba"
-  start   = "2026-01-27T15:00:00-03:00"
-  end     = "2026-01-27T15:30:00-03:00"
+  summary = "Cita de prueba viernes30"
+  start = "2026-01-30T15:00:00-03:00"
+  end = "2026-01-30T15:30:00-03:00"
   description = "Creacion desde mi API"
-  attendees = @()
+  attendees = @("galindez175@gmail.com")
 } | ConvertTo-Json
 
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/calendar/events" `
-  -ContentType "application/json" `
-  -Body $body
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/calendar/events" -ContentType "application/json" -Body $body
+
 ```
 
 -----------------------------------------------------------------------------------------------------
